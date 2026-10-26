@@ -2,7 +2,10 @@
 // - Serves a decoy page on / and a base64 subscription on /sub
 // - On first start, downloads Xray-core and unpacks it with built-in zlib only
 //   (the container has no unzip/python3)
-// - Runs Xray (VLESS + WebSocket) on 127.0.0.1 and proxies WS upgrades to it
+// - Runs Xray with three XHTTP inbounds (VLESS / Trojan / VMess) on 127.0.0.1
+//   and forwards plain-HTTP requests under each secret path to its inbound.
+//   (The platform edge strips WebSocket upgrades, so WS transports cannot
+//   work here; XHTTP rides plain HTTP and does.)
 const http = require('http');
 const net = require('net');
 const fs = require('fs');
@@ -14,9 +17,18 @@ const { spawn } = require('child_process');
 const PORT = process.env.PORT || 3000;
 const UUID = process.env.UUID || '6c1ee4d3-a30c-4888-82db-2fd4d7eb3525';
 const WS_PATH = (process.env.WS_PATH || 'ws-4a8dd7399082').replace(/^\//, '');
+const TROJAN_PW = process.env.TROJAN_PW || '1c340c0bc00948f298935c65';
+const TROJAN_PATH = (process.env.TROJAN_PATH || 'tj-07dfaae49dd1').replace(/^\//, '');
+const VMESS_ID = process.env.VMESS_ID || '762756e3-b90c-4163-b82c-4b86301cc2cf';
+const VMESS_PATH = (process.env.VMESS_PATH || 'vm-0c24a7209aa2').replace(/^\//, '');
+// Secret path prefix -> local Xray inbound port
+const ROUTES = [
+  { prefix: WS_PATH, port: 10000 },
+  { prefix: TROJAN_PATH, port: 10001 },
+  { prefix: VMESS_PATH, port: 10002 },
+];
 const XRAY_DIR = path.join(__dirname, 'xray');
 const XRAY_BIN = path.join(XRAY_DIR, 'xray');
-const XRAY_PORT = 10000;
 const XRAY_URL =
   'https://github.com/XTLS/Xray-core/releases/latest/download/Xray-linux-64.zip';
 
@@ -83,10 +95,24 @@ function startXray() {
     inbounds: [
       {
         listen: '127.0.0.1',
-        port: XRAY_PORT,
+        port: 10000,
         protocol: 'vless',
         settings: { clients: [{ id: UUID }], decryption: 'none' },
         streamSettings: { network: 'xhttp', xhttpSettings: { path: '/' + WS_PATH } },
+      },
+      {
+        listen: '127.0.0.1',
+        port: 10001,
+        protocol: 'trojan',
+        settings: { clients: [{ password: TROJAN_PW }] },
+        streamSettings: { network: 'xhttp', xhttpSettings: { path: '/' + TROJAN_PATH } },
+      },
+      {
+        listen: '127.0.0.1',
+        port: 10002,
+        protocol: 'vmess',
+        settings: { clients: [{ id: VMESS_ID, alterId: 0 }] },
+        streamSettings: { network: 'xhttp', xhttpSettings: { path: '/' + VMESS_PATH } },
       },
     ],
     outbounds: [{ protocol: 'freedom' }],
@@ -141,20 +167,28 @@ const server = http.createServer((req, res) => {
     // harrynotes-eu.velixir.run) that only serves a placeholder page
     // publicly; the working public host drops the region infix.
     const host = req.headers.host.replace(/-[a-z]{2}(?=\.velixir\.run$)/, '');
-    const link =
+    const links = [
       `vless://${UUID}@${host}:443?encryption=none&security=tls&type=xhttp` +
-      `&host=${host}&path=%2F${WS_PATH}&mode=packet-up#Velixir-UK`;
+        `&host=${host}&path=%2F${WS_PATH}&mode=packet-up#Velixir-UK-VLESS-XHTTP`,
+      `trojan://${TROJAN_PW}@${host}:443?security=tls&sni=${host}&type=xhttp` +
+        `&host=${host}&path=%2F${TROJAN_PATH}&mode=packet-up#Velixir-UK-Trojan-XHTTP`,
+      `vmess://${VMESS_ID}@${host}:443?encryption=auto&security=tls&type=xhttp` +
+        `&host=${host}&path=%2F${VMESS_PATH}&mode=packet-up#Velixir-UK-VMess-XHTTP`,
+    ];
     res.writeHead(200, {
       'Content-Type': 'text/plain; charset=utf-8',
       'Content-Disposition': 'attachment; filename="Velixir-UK.txt"',
     });
-    res.end(Buffer.from(link).toString('base64'));
+    res.end(Buffer.from(links.join('\n')).toString('base64'));
     return;
   }
-  // XHTTP traffic arrives as plain HTTP requests under the secret path
+  // XHTTP traffic arrives as plain HTTP requests under a secret path
   // (the platform edge does not forward WebSocket upgrades). Forward
-  // method, headers and body to the local Xray inbound, stream back.
-  if (u.pathname === '/' + WS_PATH || u.pathname.startsWith('/' + WS_PATH + '/')) {
+  // method, headers and body to the matching local Xray inbound.
+  const route = ROUTES.find(
+    (r) => u.pathname === '/' + r.prefix || u.pathname.startsWith('/' + r.prefix + '/')
+  );
+  if (route) {
     const HOP = new Set([
       'connection', 'keep-alive', 'proxy-authenticate', 'proxy-authorization',
       'te', 'trailer', 'transfer-encoding', 'proxy-connection',
@@ -163,11 +197,11 @@ const server = http.createServer((req, res) => {
     for (const [k, v] of Object.entries(req.headers)) {
       if (!HOP.has(k)) headers[k] = v;
     }
-    headers.host = `127.0.0.1:${XRAY_PORT}`;
+    headers.host = `127.0.0.1:${route.port}`;
     const t0 = Date.now();
     console.log(`[fwd] ${req.method} ${req.url} http/${req.httpVersion}`);
     const up = http.request(
-      { host: '127.0.0.1', port: XRAY_PORT, path: req.url, method: req.method, headers, agent: false },
+      { host: '127.0.0.1', port: route.port, path: req.url, method: req.method, headers, agent: false },
       (upRes) => {
         console.log(`[fwd] ${req.method} ${req.url} -> ${upRes.statusCode} headers in ${Date.now() - t0}ms`);
         res.writeHead(upRes.statusCode, upRes.headers);
