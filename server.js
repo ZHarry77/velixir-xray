@@ -2,7 +2,7 @@
 // - Serves a decoy page on / and a base64 subscription on /sub
 // - On first start, downloads Xray-core and unpacks it with built-in zlib only
 //   (the container has no unzip/python3)
-// - Runs Xray with three XHTTP inbounds (VLESS / Trojan / VMess) on 127.0.0.1
+// - Runs Xray with two XHTTP inbounds (VLESS / VMess) on 127.0.0.1
 //   and forwards plain-HTTP requests under each secret path to its inbound.
 //   (The platform edge strips WebSocket upgrades, so WS transports cannot
 //   work here; XHTTP rides plain HTTP and does.)
@@ -17,14 +17,13 @@ const { spawn } = require('child_process');
 const PORT = process.env.PORT || 3000;
 const UUID = process.env.UUID || '6c1ee4d3-a30c-4888-82db-2fd4d7eb3525';
 const WS_PATH = (process.env.WS_PATH || 'ws-4a8dd7399082').replace(/^\//, '');
-const TROJAN_PW = process.env.TROJAN_PW || '1c340c0bc00948f298935c65';
-const TROJAN_PATH = (process.env.TROJAN_PATH || 'tj-07dfaae49dd1').replace(/^\//, '');
 const VMESS_ID = process.env.VMESS_ID || '762756e3-b90c-4163-b82c-4b86301cc2cf';
 const VMESS_PATH = (process.env.VMESS_PATH || 'vm-0c24a7209aa2').replace(/^\//, '');
-// Secret path prefix -> local Xray inbound port
+// Secret path prefix -> local Xray inbound port.
+// (A Trojan-XHTTP inbound existed briefly; Shadowrocket's Trojan stack
+// does not speak XHTTP, so it was removed 2026-10-26 at the user's call.)
 const ROUTES = [
   { prefix: WS_PATH, port: 10000 },
-  { prefix: TROJAN_PATH, port: 10001 },
   { prefix: VMESS_PATH, port: 10002 },
 ];
 const XRAY_DIR = path.join(__dirname, 'xray');
@@ -102,13 +101,6 @@ function startXray() {
       },
       {
         listen: '127.0.0.1',
-        port: 10001,
-        protocol: 'trojan',
-        settings: { clients: [{ password: TROJAN_PW }] },
-        streamSettings: { network: 'xhttp', xhttpSettings: { path: '/' + TROJAN_PATH } },
-      },
-      {
-        listen: '127.0.0.1',
         port: 10002,
         protocol: 'vmess',
         settings: { clients: [{ id: VMESS_ID, alterId: 0 }] },
@@ -173,8 +165,6 @@ const server = http.createServer((req, res) => {
     const links = [
       `vless://${UUID}@${host}:443?encryption=none&security=tls&type=xhttp` +
         `&host=${host}&path=%2F${WS_PATH}&mode=packet-up#Velixir-UK-VLESS-XHTTP`,
-      `trojan://${TROJAN_PW}@${host}:443?security=tls&sni=${host}&peer=${host}&type=xhttp` +
-        `&host=${host}&path=%2F${TROJAN_PATH}&mode=packet-up#Velixir-UK-Trojan-XHTTP`,
       `vmess://${VMESS_ID}@${host}:443?encryption=auto&security=tls&type=xhttp` +
         `&host=${host}&path=%2F${VMESS_PATH}&mode=packet-up#Velixir-UK-VMess-XHTTP`,
     ];
