@@ -101,8 +101,17 @@ function startXray() {
   });
 }
 
+const BUNDLED_BIN = path.join(__dirname, 'bin', 'xray');
+
 async function bootstrap() {
   try {
+    if (!fs.existsSync(XRAY_BIN) && fs.existsSync(BUNDLED_BIN)) {
+      // Preferred path: binary shipped inside the repo, no runtime download.
+      fs.mkdirSync(XRAY_DIR, { recursive: true });
+      fs.copyFileSync(BUNDLED_BIN, XRAY_BIN);
+      fs.chmodSync(XRAY_BIN, 0o755);
+      console.log('[boot] using bundled xray binary');
+    }
     if (!fs.existsSync(XRAY_BIN)) {
       fs.mkdirSync(XRAY_DIR, { recursive: true });
       const zip = path.join(XRAY_DIR, 'xray.zip');
