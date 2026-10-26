@@ -162,7 +162,10 @@ const DECOY = `<!doctype html><html><head><meta charset="utf-8">
 
 const server = http.createServer((req, res) => {
   const u = new URL(req.url, 'http://localhost');
-  if (u.pathname === '/sub') {
+  // The subscription is also served under a named path: clients that take
+  // the subscription (group) name from the URL filename then import it as
+  // "Velixir-UK", matching the other subscriptions' naming.
+  if (u.pathname === '/sub' || u.pathname === '/Velixir-UK.txt') {
     // The edge presents an internal regional host (e.g.
     // harrynotes-eu.velixir.run) that only serves a placeholder page
     // publicly; the working public host drops the region infix.
