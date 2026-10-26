@@ -1,0 +1,1 @@
+{"description":"Personal blog service","engines":{"node":"22"},"name":"velixir-xray","private":true,"scripts":{"start":"node server.js"},"version":"1.0.0"}
