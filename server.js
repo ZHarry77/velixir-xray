@@ -171,6 +171,9 @@ const server = http.createServer((req, res) => {
     res.writeHead(200, {
       'Content-Type': 'text/plain; charset=utf-8',
       'Content-Disposition': 'attachment; filename="Velixir-Portland.txt"',
+      // How panel-style subscriptions carry their display name: clients
+      // (Shadowrocket etc.) read it on every refresh and name the group.
+      'profile-title': 'base64:' + Buffer.from('Velixir-Portland').toString('base64'),
     });
     res.end(Buffer.from(links.join('\n')).toString('base64'));
     return;
