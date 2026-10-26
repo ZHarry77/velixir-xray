@@ -173,7 +173,7 @@ const server = http.createServer((req, res) => {
     const links = [
       `vless://${UUID}@${host}:443?encryption=none&security=tls&type=xhttp` +
         `&host=${host}&path=%2F${WS_PATH}&mode=packet-up#Velixir-UK-VLESS-XHTTP`,
-      `trojan://${TROJAN_PW}@${host}:443?security=tls&sni=${host}&type=xhttp` +
+      `trojan://${TROJAN_PW}@${host}:443?security=tls&sni=${host}&peer=${host}&type=xhttp` +
         `&host=${host}&path=%2F${TROJAN_PATH}&mode=packet-up#Velixir-UK-Trojan-XHTTP`,
       `vmess://${VMESS_ID}@${host}:443?encryption=auto&security=tls&type=xhttp` +
         `&host=${host}&path=%2F${VMESS_PATH}&mode=packet-up#Velixir-UK-VMess-XHTTP`,
