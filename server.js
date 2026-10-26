@@ -143,8 +143,11 @@ const server = http.createServer((req, res) => {
     const host = req.headers.host.replace(/-[a-z]{2}(?=\.velixir\.run$)/, '');
     const link =
       `vless://${UUID}@${host}:443?encryption=none&security=tls&type=xhttp` +
-      `&host=${host}&path=%2F${WS_PATH}&mode=packet-up#Velixir-EU`;
-    res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
+      `&host=${host}&path=%2F${WS_PATH}&mode=packet-up#Velixir-UK`;
+    res.writeHead(200, {
+      'Content-Type': 'text/plain; charset=utf-8',
+      'Content-Disposition': 'attachment; filename="Velixir-UK.txt"',
+    });
     res.end(Buffer.from(link).toString('base64'));
     return;
   }
