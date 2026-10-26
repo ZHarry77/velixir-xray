@@ -86,7 +86,7 @@ function startXray() {
         port: XRAY_PORT,
         protocol: 'vless',
         settings: { clients: [{ id: UUID }], decryption: 'none' },
-        streamSettings: { network: 'ws', wsSettings: { path: '/' + WS_PATH } },
+        streamSettings: { network: 'xhttp', xhttpSettings: { path: '/' + WS_PATH } },
       },
     ],
     outbounds: [{ protocol: 'freedom' }],
@@ -139,35 +139,33 @@ const server = http.createServer((req, res) => {
   if (u.pathname === '/sub') {
     const host = req.headers.host;
     const link =
-      `vless://${UUID}@${host}:443?encryption=none&security=tls&type=ws` +
-      `&host=${host}&path=%2F${WS_PATH}#Velixir-EU`;
+      `vless://${UUID}@${host}:443?encryption=none&security=tls&type=xhttp` +
+      `&host=${host}&path=%2F${WS_PATH}&mode=packet-up#Velixir-EU`;
     res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
     res.end(Buffer.from(link).toString('base64'));
     return;
   }
-  res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-  res.end(DECOY);
-});
-
-server.on('upgrade', (req, socket, head) => {
-  const u = new URL(req.url, 'http://localhost');
-  if (u.pathname !== '/' + WS_PATH) {
-    socket.destroy();
+  // XHTTP traffic arrives as plain HTTP requests under the secret path
+  // (the platform edge does not forward WebSocket upgrades). Forward
+  // method, headers and body to the local Xray inbound, stream back.
+  if (u.pathname === '/' + WS_PATH || u.pathname.startsWith('/' + WS_PATH + '/')) {
+    const headers = { ...req.headers, host: `127.0.0.1:${XRAY_PORT}` };
+    const up = http.request(
+      { host: '127.0.0.1', port: XRAY_PORT, path: req.url, method: req.method, headers },
+      (upRes) => {
+        res.writeHead(upRes.statusCode, upRes.headers);
+        upRes.pipe(res);
+      }
+    );
+    up.on('error', () => {
+      if (!res.headersSent) res.writeHead(502);
+      res.end();
+    });
+    req.pipe(up);
     return;
   }
-  const up = net.connect(XRAY_PORT, '127.0.0.1', () => {
-    let raw = `${req.method} ${req.url} HTTP/1.1\r\n`;
-    for (let i = 0; i < req.rawHeaders.length; i += 2) {
-      raw += `${req.rawHeaders[i]}: ${req.rawHeaders[i + 1]}\r\n`;
-    }
-    raw += '\r\n';
-    up.write(raw);
-    if (head && head.length) up.write(head);
-    up.pipe(socket);
-    socket.pipe(up);
-  });
-  up.on('error', () => socket.destroy());
-  socket.on('error', () => up.destroy());
+  res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+  res.end(DECOY);
 });
 
 server.listen(PORT, () => console.log('[app] listening on', PORT));
