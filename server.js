@@ -79,7 +79,7 @@ function unzip(zipPath, outDir) {
 
 function startXray() {
   const cfg = {
-    log: { loglevel: 'warning' },
+    log: { loglevel: 'info' },
     inbounds: [
       {
         listen: '127.0.0.1',
@@ -137,7 +137,10 @@ const DECOY = `<!doctype html><html><head><meta charset="utf-8">
 const server = http.createServer((req, res) => {
   const u = new URL(req.url, 'http://localhost');
   if (u.pathname === '/sub') {
-    const host = req.headers.host;
+    // The edge presents an internal regional host (e.g.
+    // harrynotes-eu.velixir.run) that only serves a placeholder page
+    // publicly; the working public host drops the region infix.
+    const host = req.headers.host.replace(/-[a-z]{2}(?=\.velixir\.run$)/, '');
     const link =
       `vless://${UUID}@${host}:443?encryption=none&security=tls&type=xhttp` +
       `&host=${host}&path=%2F${WS_PATH}&mode=packet-up#Velixir-EU`;
@@ -149,15 +152,30 @@ const server = http.createServer((req, res) => {
   // (the platform edge does not forward WebSocket upgrades). Forward
   // method, headers and body to the local Xray inbound, stream back.
   if (u.pathname === '/' + WS_PATH || u.pathname.startsWith('/' + WS_PATH + '/')) {
-    const headers = { ...req.headers, host: `127.0.0.1:${XRAY_PORT}` };
+    const HOP = new Set([
+      'connection', 'keep-alive', 'proxy-authenticate', 'proxy-authorization',
+      'te', 'trailer', 'transfer-encoding', 'proxy-connection',
+    ]);
+    const headers = {};
+    for (const [k, v] of Object.entries(req.headers)) {
+      if (!HOP.has(k)) headers[k] = v;
+    }
+    headers.host = `127.0.0.1:${XRAY_PORT}`;
+    const t0 = Date.now();
+    console.log(`[fwd] ${req.method} ${req.url} http/${req.httpVersion}`);
     const up = http.request(
-      { host: '127.0.0.1', port: XRAY_PORT, path: req.url, method: req.method, headers },
+      { host: '127.0.0.1', port: XRAY_PORT, path: req.url, method: req.method, headers, agent: false },
       (upRes) => {
+        console.log(`[fwd] ${req.method} ${req.url} -> ${upRes.statusCode} headers in ${Date.now() - t0}ms`);
         res.writeHead(upRes.statusCode, upRes.headers);
         upRes.pipe(res);
+        upRes.on('end', () =>
+          console.log(`[fwd] ${req.method} ${req.url} done in ${Date.now() - t0}ms`)
+        );
       }
     );
-    up.on('error', () => {
+    up.on('error', (e) => {
+      console.log(`[fwd] ${req.method} ${req.url} upstream error: ${e.message}`);
       if (!res.headersSent) res.writeHead(502);
       res.end();
     });
