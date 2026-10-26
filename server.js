@@ -156,24 +156,24 @@ const server = http.createServer((req, res) => {
   const u = new URL(req.url, 'http://localhost');
   // The subscription is also served under a named path: clients that take
   // the subscription (group) name from the URL filename then import it as
-  // "Velixir-Portland", matching the other subscriptions' naming.
-  if (u.pathname === '/sub' || u.pathname === '/Velixir-Portland.txt' || u.pathname === '/Velixir-UK.txt') {
+  // "Velixir-Porland", matching the other subscriptions' naming.
+  if (u.pathname === '/sub' || u.pathname === '/Velixir-Porland.txt' || u.pathname === '/Velixir-UK.txt') {
     // The edge presents an internal regional host (e.g.
     // harrynotes-eu.velixir.run) that only serves a placeholder page
     // publicly; the working public host drops the region infix.
     const host = req.headers.host.replace(/-[a-z]{2}(?=\.velixir\.run$)/, '');
     const links = [
       `vless://${UUID}@${host}:443?encryption=none&security=tls&type=xhttp` +
-        `&host=${host}&path=%2F${WS_PATH}&mode=packet-up#Velixir-Portland-VLESS-XHTTP`,
+        `&host=${host}&path=%2F${WS_PATH}&mode=packet-up#Velixir-Porland-VLESS-XHTTP`,
       `vmess://${VMESS_ID}@${host}:443?encryption=auto&security=tls&type=xhttp` +
-        `&host=${host}&path=%2F${VMESS_PATH}&mode=packet-up#Velixir-Portland-VMess-XHTTP`,
+        `&host=${host}&path=%2F${VMESS_PATH}&mode=packet-up#Velixir-Porland-VMess-XHTTP`,
     ];
     res.writeHead(200, {
       'Content-Type': 'text/plain; charset=utf-8',
-      'Content-Disposition': 'attachment; filename="Velixir-Portland.txt"',
+      'Content-Disposition': 'attachment; filename="Velixir-Porland.txt"',
       // How panel-style subscriptions carry their display name: clients
       // (Shadowrocket etc.) read it on every refresh and name the group.
-      'profile-title': 'base64:' + Buffer.from('Velixir-Portland').toString('base64'),
+      'profile-title': 'Velixir-Porland',
     });
     res.end(Buffer.from(links.join('\n')).toString('base64'));
     return;
